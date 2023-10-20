@@ -4,6 +4,7 @@ use serde::Deserialize;
 use rand::Rng;
 
 const KEY_LEN: usize = 4;
+const MAX_RETRIES: usize = 10;
 const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 #[derive(Debug)]
@@ -68,11 +69,21 @@ async fn handle_get(key: String, pool: PgPool) -> Result<impl warp::Reply, warp:
 }
 
 async fn set_key(value: &str, user: Option<&str>, pool: &PgPool) -> Result<String, sqlx::Error> {
-    let key = gen_key();
-    sqlx::query!("INSERT INTO urls (key, value, user_id) VALUES ($1, $2, $3)", key, value, user)
-        .execute(pool)
-        .await?;
-    Ok(key)
+    let mut counter = 0;
+
+    loop {
+        let key = gen_key(counter);
+        match sqlx::query!("INSERT INTO urls (key, value, user_id) VALUES ($1, $2, $3)", key, value, user)
+            .execute(pool)
+            .await
+        {
+            Ok(_) => return Ok(key), 
+            Err(_) if counter < MAX_RETRIES => {
+                counter += 1;
+            }
+            Err(err) => return Err(err), 
+        }
+    }
 }
 
 async fn get_key(key: &str, pool: &PgPool) -> Result<Option<String>, sqlx::Error> {
@@ -82,9 +93,10 @@ async fn get_key(key: &str, pool: &PgPool) -> Result<Option<String>, sqlx::Error
     Ok(result.map(|r| r.value))
 }
 
-fn gen_key() -> String {
+fn gen_key(extra_len: usize) -> String {
+    let total_len = KEY_LEN + extra_len; 
     let mut rng = rand::thread_rng();
-    (0..KEY_LEN).map(|_| {
+    (0..total_len).map(|_| {
         let idx = rng.gen_range(0..CHARS.len());
         CHARS[idx] as char
     }).collect()
