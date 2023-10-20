@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::fs::{OpenOptions, File};
-use std::io::{self, BufRead, BufReader, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
 use std::sync::Mutex;
 use warp::Filter;
@@ -24,7 +24,8 @@ lazy_static::lazy_static! {
     };
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let set = warp::post()
         .and(warp::body::bytes())
         .map(|bytes: bytes::Bytes| {
@@ -39,16 +40,16 @@ fn main() {
         .map(|key: String| {
             let map = DATA.lock().unwrap();
             match map.get(&key) {
-                Some(value) => warp::reply::html(value.clone()),
-                None => warp::reply::with_status(
+                Some(value) => Box::new(warp::reply::html(value.clone())) as Box<dyn warp::Reply>,
+                None => Box::new(warp::reply::with_status(
                     "Not Found",
                     warp::http::StatusCode::NOT_FOUND,
-                ),
+                )) as Box<dyn warp::Reply>,
             }
         });
 
     let routes = set.or(get);
-    warp::serve(routes).run(SocketAddr::from(([127, 0, 0, 1], 3000)));
+    warp::serve(routes).run(SocketAddr::from(([127, 0, 0, 1], 3000))).await;
 }
 
 fn gen_key() -> String {
