@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let routes = post.or(get);
 
-    warp::serve(routes).run(SocketAddr::from(([127, 0, 0, 1], 3000))).await;
+    warp::serve(routes).run(SocketAddr::from(([0, 0, 0, 0], 3000))).await;
 
     Ok(())
 }
