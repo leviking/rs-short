@@ -1,53 +1,71 @@
-# rs-short: A Minimal URL-Shortening Service
+# rs-short - A Simple URL Shortener in Rust
 
-`rs-short` is a minimalistic URL shortening service built in Rust using the Warp framework.
+`rs-short` is a lightweight URL shortener built with Warp and SQLx.
 
-## Features:
+## Features
 
-- URL shortening and redirection.
-- Simple in-memory database (can be easily replaced with a persistent one).
-- Efficient and concurrent request handling.
+- Shorten URLs with a simple POST request.
+- Retrieve and redirect to the original URL with the shortened path.
+- Tracks the number of times each shortened URL is accessed.
+- (Optional) Assign a user to a shortened URL.
 
-## Prerequisites
+## Setup
 
-- Rust: To install Rust, follow the guide [here](https://rustup.rs/).
+### Prerequisites
 
-## Getting Started
+1. Rust (latest stable version)
+2. PostgreSQL Database
 
-1. **Clone the Repository**:
+### Configuration
 
-    ```bash
-    git clone https://github.com/leviking/rs-short.git
-    cd rs-short
-    ```
+1. Setup your PostgreSQL database and create the `urls` table:
 
-2. **Build and Run**:
+```sql
+CREATE TABLE urls (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    user_id TEXT,
+    visit_count INTEGER DEFAULT 0
+);
+```
 
-    ```bash
-    cargo run
-    ```
+2. Set your database URL in an environment variable:
 
-    This will start the server on `localhost:3000`.
+```
+export DATABASE_URL=postgres://username:password@localhost:5432/mydatabase
+```
 
-3. **Test the Service**:
+Or use a `.env` file with:
 
-    - **Add a URL**:
+```
+DATABASE_URL=postgres://username:password@localhost:5432/mydatabase
+```
 
-      ```bash
-      curl -X POST -d "https://www.wikipedia.com/" http://localhost:3000
-      ```
+### Running the Application
 
-      This will return a shortened key. For example, `abcd`.
+Navigate to the project directory and run:
 
-    - **Access the Shortened URL**:
+```
+cargo run
+```
 
-      Open your browser and navigate to `http://localhost:3000/abcd`. This should redirect you to `https://www.wikipedia.com/`.
+The application will start and listen on `127.0.0.1:3000`.
 
-## Implementation Details
+## Usage
 
-- Uses Warp for web routing and server functionalities.
-- Uses an in-memory `HashMap` guarded by a `Mutex` for thread-safe concurrent access.
+### Shortening a URL
 
-## Contributing
+Make a POST request with JSON data:
 
-Feel free to create issues for suggestions, bugs, or improvements. Pull requests are always welcome.
+```json
+{
+    "url": "https://example.com",
+    "user": "optional_username"
+}
+```
+
+The response will contain the shortened key.
+
+### Accessing a URL
+
+Navigate to `http://localhost:3000/<key>` to be redirected to the original URL. Each access will increment the visit count for that URL.
