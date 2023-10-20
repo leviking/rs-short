@@ -26,24 +26,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let get_db_pool = db_pool.clone();
 
     let post = warp::post()
-        .and(warp::body::json())
-        .and(warp::any().map(move || post_db_pool.clone()))
-        .and_then(handle_post);
-
+    .and(warp::body::json())
+    .and(warp::any().map(move || post_db_pool.clone()))
+    .and(warp::filters::addr::remote())
+    .and_then(handle_post);
 
     let get = warp::path::param()
         .and(warp::any().map(move || get_db_pool.clone()))
         .and_then(handle_get);
 
-    let routes = post.or(get);
+    // New route to serve the static index.html file
+    let static_file = warp::path::end()
+        .and(warp::fs::file("./static/index.html"));
+
+    // Combine the routes
+    let routes = post.or(get).or(static_file);
 
     warp::serve(routes).run(SocketAddr::from(([0, 0, 0, 0], 3000))).await;
 
     Ok(())
 }
 
-async fn handle_post(form: LinkForm, pool: PgPool) -> Result<impl warp::Reply, warp::Rejection> {
-    match set_key(&form.url, form.user.as_deref(), &pool).await {
+async fn handle_post(form: LinkForm, pool: PgPool, addr: Option<SocketAddr>) -> Result<impl warp::Reply, warp::Rejection> {
+    let user = form.user.unwrap_or_else(|| {
+        addr.map_or(String::new(), |a| a.ip().to_string())
+    });
+    
+    match set_key(&form.url, Some(&user), &pool).await {
         Ok(key) => Ok(warp::reply::html(key)),
         Err(_) => Err(warp::reject::custom(CustomError("Error saving key".to_string()))),
     }
