@@ -48,7 +48,11 @@ async fn main() {
             }
         });
 
-    let routes = set.or(get);
+    let root = warp::get()
+        .and(warp::path::end())
+        .map(|| warp::reply::html("Welcome to rs-pastr!"));
+
+    let routes = set.or(get).or(root);
     warp::serve(routes).run(SocketAddr::from(([127, 0, 0, 1], 3000))).await;
 }
 
