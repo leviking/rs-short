@@ -71,7 +71,7 @@ async fn set_key(value: &str, user: Option<&str>, pool: &PgPool) -> Result<Strin
 }
 
 async fn get_key(key: &str, pool: &PgPool) -> Result<Option<String>, sqlx::Error> {
-    let result = sqlx::query!("SELECT value FROM urls WHERE key = $1", key)
+    let result = sqlx::query!("UPDATE urls SET visit_count = visit_count + 1 WHERE key = $1 RETURNING value", key)
         .fetch_optional(pool)
         .await?;
 
