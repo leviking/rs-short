@@ -1,67 +1,79 @@
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
-use std::sync::Mutex;
-use warp::Filter;
+use warp::{Filter, http::StatusCode};
+use sqlx::PgPool;
+use serde::Deserialize;
 
-const DB_FILE: &str = "data.db";
+#[derive(Debug)]
+struct CustomError(String);
 
-lazy_static::lazy_static! {
-    static ref DATA: Mutex<HashMap<String, String>> = {
-        let mut data = HashMap::new();
-        if let Ok(file) = File::open(DB_FILE) {
-            let reader = BufReader::new(file);
-            for line in reader.lines() {
-                let line = line.unwrap();
-                let parts: Vec<&str> = line.splitn(2, ' ').collect();
-                if parts.len() == 2 {
-                    data.insert(parts[0].to_string(), parts[1].to_string());
-                }
-            }
-        }
-        Mutex::new(data)
-    };
+#[derive(Deserialize)]
+struct UrlForm {
+    url: String,
 }
 
+impl warp::reject::Reject for CustomError {}
+
 #[tokio::main]
-async fn main() {
-    let set = warp::post()
-        .and(warp::body::bytes())
-        .map(|bytes: bytes::Bytes| {
-            let data = bytes.to_vec();
-            let key = gen_key();
-            let mut map = DATA.lock().unwrap();
-            map.insert(key.clone(), String::from_utf8(data).unwrap());
-            warp::reply::html(key)
-        });
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok();
 
-        let get = warp::path::param()
-        .map(|key: String| {
-            let map = DATA.lock().unwrap();
-            match map.get(&key) {
-                Some(value) => {
-                    let reply = warp::http::Response::builder()
-                        .status(302)
-                        .header("Location", value.clone())
-                        .body("")
-                        .unwrap();
-                    Box::new(reply) as Box<dyn warp::Reply>
-                }
-                None => Box::new(warp::reply::with_status(
-                    "Not Found",
-                    warp::http::StatusCode::NOT_FOUND,
-                )) as Box<dyn warp::Reply>,
-            }
-        });
-    
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");    let db_pool = PgPool::connect(&database_url).await?;
 
-    let root = warp::get()
-        .and(warp::path::end())
-        .map(|| warp::reply::html("Welcome to rs-pastr!"));
+    let post_db_pool = db_pool.clone();
+    let get_db_pool = db_pool.clone();
 
-    let routes = set.or(get).or(root);
+    let post = warp::post()
+        .and(warp::body::form::<UrlForm>())
+        .and(warp::any().map(move || db_pool.clone()))
+        .and_then(handle_post);
+
+    let get = warp::path::param()
+        .and(warp::any().map(move || get_db_pool.clone()))
+        .and_then(handle_get);
+
+    let routes = post.or(get);
+
     warp::serve(routes).run(SocketAddr::from(([127, 0, 0, 1], 3000))).await;
+
+    Ok(())
+}
+
+async fn handle_post(form: UrlForm, pool: PgPool) -> Result<impl warp::Reply, warp::Rejection> {
+    match set_key(&form.url, &pool).await {
+        Ok(key) => Ok(warp::reply::html(key)),
+        Err(_) => Err(warp::reject::custom(CustomError("Error saving key".to_string()))),
+    }
+}
+
+async fn handle_get(key: String, pool: PgPool) -> Result<impl warp::Reply, warp::Rejection> {
+    match get_key(&key, &pool).await {
+        Ok(Some(value)) => {
+            let reply = warp::http::Response::builder()
+                .status(StatusCode::FOUND)
+                .header("Location", value)
+                .body("")
+                .unwrap();
+            Ok(reply)
+        }
+        _ => Err(warp::reject::not_found()),
+    }
+}
+
+async fn set_key(value: &str, pool: &PgPool) -> Result<String, sqlx::Error> {
+    let key = gen_key();
+    sqlx::query!("INSERT INTO urls (key, value) VALUES ($1, $2)", key, value)
+        .execute(pool)
+        .await?;
+    Ok(key)
+}
+
+async fn get_key(key: &str, pool: &PgPool) -> Result<Option<String>, sqlx::Error> {
+    let result = sqlx::query!("SELECT value FROM urls WHERE key = $1", key)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(result.map(|r| r.value))
 }
 
 fn gen_key() -> String {
