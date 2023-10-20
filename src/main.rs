@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use warp::{Filter, http::StatusCode};
 use sqlx::PgPool;
 use serde::Deserialize;
+use rand::Rng;
 
 #[derive(Debug)]
 struct CustomError(String);
@@ -79,11 +80,15 @@ async fn get_key(key: &str, pool: &PgPool) -> Result<Option<String>, sqlx::Error
 }
 
 fn gen_key() -> String {
-    let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chars().collect();
-    let mut key = String::new();
-    for _ in 0..4 {
-        let idx = rand::random::<usize>() % chars.len();
-        key.push(chars[idx]);
-    }
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::thread_rng();
+    
+    let key: String = (0..4)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARS.len());
+            CHARS[idx] as char
+        })
+        .collect();
+
     key
 }
