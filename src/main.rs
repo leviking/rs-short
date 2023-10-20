@@ -36,17 +36,25 @@ async fn main() {
             warp::reply::html(key)
         });
 
-    let get = warp::path::param()
+        let get = warp::path::param()
         .map(|key: String| {
             let map = DATA.lock().unwrap();
             match map.get(&key) {
-                Some(value) => Box::new(warp::reply::html(value.clone())) as Box<dyn warp::Reply>,
+                Some(value) => {
+                    let reply = warp::http::Response::builder()
+                        .status(302)
+                        .header("Location", value.clone())
+                        .body("")
+                        .unwrap();
+                    Box::new(reply) as Box<dyn warp::Reply>
+                }
                 None => Box::new(warp::reply::with_status(
                     "Not Found",
                     warp::http::StatusCode::NOT_FOUND,
                 )) as Box<dyn warp::Reply>,
             }
         });
+    
 
     let root = warp::get()
         .and(warp::path::end())
