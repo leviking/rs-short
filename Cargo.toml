@@ -14,5 +14,5 @@ tokio = { version = "1", features = ["full", "macros"] }
 sqlx = { version = "0.5", features = ["runtime-tokio-rustls", "postgres"] }
 syn = { version = "1.0.109", features = ["parsing", "derive", "full"] }
 sqlx-macros = "0.7.2"
-serde = "1.0.189"
+serde = { version = "1.0.189", features = ["derive"] }
 dotenv = "0.15.0"
